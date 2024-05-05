@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: app
+    restart: unless-stopped
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./app/:/usr/src/app/
+      - ./app/static:/usr/src/app/static
+      - ./app/media:/usr/src/app/media
+    ports:
+      - 8000:8000
+    expose:
+      - "8000"
+    env_file:
+      - ./.env
+    depends_on:
+      - db
+
+  db:
+    image: postgres:latest
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=backhand
+    ports:
+      - 5432:5432
+    expose:
+      - 5432
+
+  redis:
+    restart: unless-stopped
+    image: redis:latest
+    command: redis-server --appendonly yes --replica-read-only no
+    ports:
+      - 6379:6379
+    expose:
+      - 6379
+
+  celery:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: celery/celery:latest
+    command: celery -A config worker -l INFO --pool gevent --concurrency 10
+    volumes:
+      - ./backend/:/usr/src/app/
+    environment:
+      - DEBUG=1
+      - CELERY_BROKER=redis://redis:6379/0
+      - CELERY_BACKEND=redis://redis:6379/0
+      - REDIS_HOST:redis
+      - WORKER_LOGLEVEL:DEBUG
+    env_file:
+      - ./.env
+    depends_on:
+      - web
+      - redis
+
+
+volumes:
+  # media_files:
+  postgres_data:
+    external: true
